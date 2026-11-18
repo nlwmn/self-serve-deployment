@@ -1,0 +1,138 @@
+---
+- name: Register the KVM host
+  hosts: selfservehost
+  gather_facts: no
+  vars_files:
+    - vars/vault_private_vars.yml
+  tasks:
+    - name: Register with subscription-manager
+      become: true
+      ansible.builtin.command: >
+        subscription-manager register
+        --org {{ rhsm_org }}
+        --activationkey {{ rhsm_activation_key }}
+      register: rhsm_register
+      changed_when: rhsm_register.rc == 0
+      failed_when:
+        - rhsm_register.rc != 0
+        - "'already registered' not in rhsm_register.stderr | lower"
+      no_log: true
+
+- name: Deploy AAP self-serve VM
+  hosts: selfservehost
+  gather_facts: no
+  vars_files:
+    - vars/vars_self_serve.yml
+    - vars/vault_private_vars.yml
+  tasks:
+    - name: Install required packages
+      become: true
+      ansible.builtin.package:
+        name:
+          - qemu-kvm
+          - libvirt
+          - virt-install
+          - genisoimage
+
+    - name: Start libvirt service
+      become: true
+      ansible.builtin.systemd:
+        name: libvirtd
+        state: started
+        enabled: true
+
+    - name: Add user to libvirt group
+      become: true
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: libvirt
+        append: true
+
+    - name: Ensure cloud-init work directory exists
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Render cloud-init user-data
+      ansible.builtin.template:
+        src: user-data.j2
+        dest: "{{ work_dir }}/user-data"
+        mode: "0600"
+
+    - name: Render cloud-init meta-data
+      ansible.builtin.template:
+        src: meta-data.j2
+        dest: "{{ work_dir }}/meta-data"
+        mode: "0644"
+
+    - name: Remove the existing cloud-init ISO if present
+      ansible.builtin.file:
+        path: "{{ work_dir }}/cloud-init.iso"
+        state: absent
+
+    - name: Generate the cloud-init ISO
+      ansible.builtin.command: >
+        genisoimage -output "{{ work_dir }}/cloud-init.iso" -V cidata -r -J
+        "{{ work_dir }}/user-data" "{{ work_dir }}/meta-data"
+
+    - name: Copy the portal appliance disk image
+      become: true
+      ansible.builtin.command: >
+        cp "{{ qcow2_path }}" "{{ image_dir }}/{{ vm_name }}.qcow2"
+
+    - name: Copy the cloud-init ISO where the hypervisor can read it
+      become: true
+      ansible.builtin.copy:
+        src: "{{ work_dir }}/cloud-init.iso"
+        dest: "{{ image_dir }}/{{ vm_name }}-cidata.iso"
+        remote_src: true
+        mode: "0644"
+
+    - name: Install the portal virtual machine
+      become: true
+      vars:
+        disk_path: "{{ image_dir }}/{{ vm_name }}.qcow2"
+        iso_path: "{{ image_dir }}/{{ vm_name }}-cidata.iso"
+      ansible.builtin.command: >
+        virt-install --name={{ vm_name }} --memory={{ vm_memory }} --vcpus={{ vm_cpus }} --import
+        --disk {{ disk_path }}
+        --disk {{ iso_path }},device=cdrom
+        --osinfo rhel9-unknown
+        --network default
+        --noautoconsole
+      register: virt_install_result
+
+    - name: Wait for the portal guest address
+      become: true
+      ansible.builtin.command: virsh domifaddr {{ vm_name }}
+      register: portal_addr
+      changed_when: false
+      retries: 30
+      delay: 5
+      until: portal_addr.stdout is search('\\d+\\.\\d+\\.\\d+\\.\\d+')
+
+    - name: Record the portal guest address
+      ansible.builtin.set_fact:
+        portal_guest_ip: "{{ portal_addr.stdout | regex_search('(\\d+\\.\\d+\\.\\d+\\.\\d+)', '\\1') | first }}"
+
+    - name: Remove the previous port-forward hook
+      become: true
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/libvirt/hooks/qemu
+        - /usr/local/sbin/portal-port-forward
+
+    - name: Forward host port 443 to the portal
+      become: true
+      ansible.builtin.shell: |
+        iptables -t nat -C PREROUTING -i {{ portal_forward_iface }} -p tcp --dport 443 -j DNAT --to-destination {{ portal_guest_ip }}:443 \
+          || iptables -t nat -A PREROUTING -i {{ portal_forward_iface }} -p tcp --dport 443 -j DNAT --to-destination {{ portal_guest_ip }}:443
+        iptables -C LIBVIRT_FWI -d {{ portal_guest_ip }}/32 -o virbr0 -p tcp --dport 443 -j ACCEPT \
+          || iptables -I LIBVIRT_FWI 1 -d {{ portal_guest_ip }}/32 -o virbr0 -p tcp --dport 443 -j ACCEPT
+
+    - name: Show the browser URL
+      ansible.builtin.debug:
+        msg: "Browse to https://{{ ansible_host }}/ . The guest address is {{ portal_guest_ip }}."

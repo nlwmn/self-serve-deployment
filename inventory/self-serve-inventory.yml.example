@@ -1,0 +1,7 @@
+all:
+  hosts:
+    selfservehost:
+      ansible_host: kvm.example.com
+      ansible_user: cloud-user
+      # Optional. Omit this to use ssh-agent or ~/.ssh/config.
+      # ansible_ssh_private_key_file: ~/.ssh/id_ed25519

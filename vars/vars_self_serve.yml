@@ -1,0 +1,19 @@
+# Ansible automation portal RHEL Installer 2.3 disk image (QCOW2)
+image_sha256: "82953331b03b9015c1dad9d374ab57659a31decc2a808f98e6aaae21035ad742"
+download_dir: "/data/kvm_data"
+qcow2_path: "/data/kvm_data/ansible-automation-portal-2.3.1-x86_64.qcow2"
+vm_name: "automation-portal"
+vm_memory: 24576
+vm_cpus: 6
+work_dir: "/home/{{ ansible_user }}/portal-deploy"
+image_dir: "/var/lib/libvirt/images"
+portal_forward_iface: eth0
+portal_base_url: "https://{{ ansible_host }}"
+
+portal_user: admin
+# ssh_public_key: "<your-ssh-public-key>" set in vault_private_vars.yml
+
+# aap_host_url, aap_api_token, aap_check_ssl, aap_oauth_client_id, and
+# aap_oauth_client_secret are set in vault_private_vars.yml
+
+database_type: builtin

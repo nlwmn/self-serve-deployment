@@ -1,0 +1,38 @@
+---
+- name: Destroy the AAP self-serve VM
+  hosts: selfservehost
+  gather_facts: no
+  vars_files:
+    - vars/vars_self_serve.yml
+
+  tasks:
+    - name: Check if the VM exists
+      become: true
+      community.libvirt.virt:
+        command: list_vms
+      register: vm_info
+      changed_when: false
+
+    - name: Destroy the VM
+      become: true
+      community.libvirt.virt:
+        name: "{{ vm_name }}"
+        state: destroyed
+      when: vm_info.list_vms is defined and vm_name in vm_info.list_vms
+
+    - name: Undefine the VM
+      become: true
+      community.libvirt.virt:
+        command: undefine
+        name: "{{ vm_name }}"
+        force: true
+      when: vm_info.list_vms is defined and vm_name in vm_info.list_vms
+
+    - name: Remove the cloud-init ISO
+      become: true
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ work_dir }}/cloud-init.iso"
+        - "{{ image_dir }}/{{ vm_name }}-cidata.iso"

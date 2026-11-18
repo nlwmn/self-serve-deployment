@@ -1,0 +1,20 @@
+#cloud-config
+users:
+  - name: {{ portal_user }}
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - "{{ ssh_public_key }}"
+
+aap:
+  host_url: "{{ aap_host_url }}"
+  token: "{{ aap_api_token }}"
+  check_ssl: {{ aap_check_ssl | bool | lower }}
+  oauth:
+    client_id: "{{ aap_oauth_client_id }}"
+    client_secret: "{{ aap_oauth_client_secret }}"
+
+database:
+  type: {{ database_type }}
+
+network:
+  base_url: "{{ portal_base_url }}"

@@ -1,0 +1,22 @@
+# Copy to vars/vault_private_vars.yml and fill in real values.
+# That file is gitignored and must not be committed.
+
+# Public key installed for portal_user on the guest (see vars/vars_self_serve.yml).
+ssh_public_key: "ssh-ed25519 AAAA... user@host"
+
+# Automation controller the portal connects to.
+aap_host_url: "https://aap.example.com"
+aap_api_token: "<controller-api-token>"
+# Verify the controller TLS certificate. Set false only for a lab controller
+# whose certificate the guest cannot validate.
+aap_check_ssl: true
+aap_oauth_client_id: "<oauth-client-id>"
+aap_oauth_client_secret: "<oauth-client-secret>"
+
+# Offline token from https://access.redhat.com/management/api
+# Used only by download_image.yml.
+redhat_offline_token: "<offline_token>"
+
+# Subscription for the KVM host. Used by the first play in deploy_self_serve_vm.yml.
+rhsm_org: "<org-id>"
+rhsm_activation_key: "<activation-key>"
